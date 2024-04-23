@@ -1,0 +1,93 @@
+<?xml version="1.0" encoding="UTF-8"?>
+
+<mule xmlns:workday="http://www.mulesoft.org/schema/mule/workday" xmlns:google-drive="http://www.mulesoft.org/schema/mule/google-drive"
+	xmlns:chatgpt="http://www.mulesoft.org/schema/mule/chatgpt"
+	xmlns:secure-properties="http://www.mulesoft.org/schema/mule/secure-properties" xmlns:ee="http://www.mulesoft.org/schema/mule/ee/core" xmlns:http="http://www.mulesoft.org/schema/mule/http" xmlns="http://www.mulesoft.org/schema/mule/core" xmlns:doc="http://www.mulesoft.org/schema/mule/documentation" xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance" xsi:schemaLocation="http://www.mulesoft.org/schema/mule/core http://www.mulesoft.org/schema/mule/core/current/mule.xsd
+http://www.mulesoft.org/schema/mule/http http://www.mulesoft.org/schema/mule/http/current/mule-http.xsd
+http://www.mulesoft.org/schema/mule/ee/core http://www.mulesoft.org/schema/mule/ee/core/current/mule-ee.xsd
+http://www.mulesoft.org/schema/mule/secure-properties http://www.mulesoft.org/schema/mule/secure-properties/current/mule-secure-properties.xsd
+http://www.mulesoft.org/schema/mule/chatgpt http://www.mulesoft.org/schema/mule/chatgpt/current/mule-chatgpt.xsd
+http://www.mulesoft.org/schema/mule/google-drive http://www.mulesoft.org/schema/mule/google-drive/current/mule-google-drive.xsd
+http://www.mulesoft.org/schema/mule/workday http://www.mulesoft.org/schema/mule/workday/current/mule-workday.xsd">
+	<http:listener-config name="HTTP_Listener_config" doc:name="HTTP Listener config" doc:id="d2664b88-4fd1-4509-adfe-13e15a74fd08" >
+		<http:listener-connection host="0.0.0.0" port="8081" />
+	</http:listener-config>
+	<configuration-properties doc:name="Configuration properties" doc:id="70a2c1bc-a6b2-484e-b8e4-0d6052802198" file="properties/${mule.env}-properties.yaml" />
+	<secure-properties:config name="Secure_Properties_Config" doc:name="Secure Properties Config" doc:id="0a4916a9-1a03-4ce5-a489-9b4453826bb6" file="properties/${mule.env}-secure-properties.yaml" key="${mule.key}"/>
+	<global-property doc:name="Global Property" doc:id="85883d4b-91f5-45d6-acc8-112c7e16b6cc" name="mule.env" value="dev" />
+	<global-property doc:name="Global Property" doc:id="03961c27-7187-4b87-9117-6503e5af62d3" name="mule.key" value="s3cure@Property!" />
+	<configuration-properties doc:name="Configuration properties" doc:id="20a6a0b7-a725-4160-8485-b576d31df103" file="properties/common-env-properties.yaml" />
+	<chatgpt:config name="ChatGPT_Config" doc:name="ChatGPT Config" doc:id="4f7404b5-7810-480c-90c2-1d21c0eff511" >
+		<chatgpt:connection apiKey="&lt;&lt;API_ID&gt;&gt;" />
+	</chatgpt:config>
+	<http:request-config name="HTTP_Request_configuration" doc:name="HTTP Request configuration" doc:id="1d076ece-92f2-4a86-af82-bf5eef0f2ba1" basePath="/v1/" >
+		<http:request-connection protocol="HTTPS" host="api.openai.com" />
+	</http:request-config>
+	<flow name="chatGPT-api" doc:id="d55cad45-b3d1-4837-b5ec-3e58ba07a077" >
+		<http:listener doc:name="Listener" doc:id="8b9c8616-6af2-4078-bd80-e335347f013b" config-ref="HTTP_Listener_config" path="/quickResponse" allowedMethods="GET,POST"/>
+		<logger level="INFO" doc:name="Logger Start" doc:id="576e3158-7ff5-4c75-beac-36089d01068a" message="MS: Started CiCD Project"/>
+		<http:request method="POST" doc:name="Request ChatGPT" doc:id="516c15de-dc35-465e-a25e-f967a23af0e2" config-ref="HTTP_Request_configuration" path="chat/completions">
+			<http:body ><![CDATA[#[%dw 2.0
+output application/json
+---
+{
+    "model": "gpt-3.5-turbo",
+    "messages": [
+    {
+        "role": "user",
+        "content": payload.question as String
+    }
+]
+  }]]]></http:body>
+			<http:headers ><![CDATA[#[%dw 2.0
+output application/json
+---
+{
+	"Content-Type": "application/json",
+	"Authorization": "Bearer <<API_ID>>"
+}]]]></http:headers>
+		</http:request>
+		<ee:transform doc:name="Transform Message" doc:id="e482b024-3a37-42f0-af71-1cd93e8cc98a">
+			<ee:message>
+				<ee:set-payload><![CDATA[%dw 2.0
+output application/json
+---
+{
+	"chatGptResponse": payload.choices.message.content[0]
+	
+	}]]></ee:set-payload>
+			</ee:message>
+			<ee:variables >
+				<ee:set-variable variableName="checkVar" ><![CDATA[p('msg') ++ p('secure::msg1')]]></ee:set-variable>
+			</ee:variables>
+		</ee:transform>
+		<logger level="INFO" doc:name="Logger End" doc:id="fe5cc539-2f33-41ef-aaad-41efbaea14e6" message="MS: Ended CiCD Project" />
+	</flow>
+	
+	<flow name="chatGPT-connector" doc:id="8b979b18-5994-41bb-94d9-906c69b6e546" >
+		<http:listener doc:name="Listener" doc:id="f68afa50-ba85-486e-8b62-64197a6eb1df" config-ref="HTTP_Listener_config" path="/quickResponse" allowedMethods="GET,POST"/>
+		<logger level="INFO" doc:name="Logger Start" doc:id="3f612477-cb5e-4ff5-bd1e-46c5bf44db28" message="MS: Started CiCD Project"/>
+		<chatgpt:chat doc:name="Chat" doc:id="90977587-54c3-4151-8ab1-c6006a08dc01" config-ref="ChatGPT_Config">
+			<chatgpt:system content="Ask me anything" />
+			<chatgpt:current-message><![CDATA[#[{
+	content: payload.question as String
+	
+	}]]]></chatgpt:current-message>
+		</chatgpt:chat>
+		<ee:transform doc:name="Transform Message" doc:id="74789d85-fdde-464b-801b-d6e5a0c18577">
+			<ee:message>
+				<ee:set-payload><![CDATA[%dw 2.0
+output application/json
+---
+{
+	"chatGptResponse": payload.choices.message.content[0]
+	
+	}]]></ee:set-payload>
+			</ee:message>
+			<ee:variables >
+				<ee:set-variable variableName="checkVar" ><![CDATA[p('msg') ++ p('secure::msg1')]]></ee:set-variable>
+			</ee:variables>
+		</ee:transform>
+		<logger level="INFO" doc:name="Logger End" doc:id="72e7700a-3e81-4df4-9c31-4b65a10b9150" message="MS: Ended CiCD Project" />
+	</flow>
+</mule>
